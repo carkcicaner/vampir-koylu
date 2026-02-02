@@ -6,6 +6,10 @@ import { db, APP_ID } from '../config/firebase';
 export const VotingView = ({ gameData, gameCode, user }) => {
   const [selectedVote, setSelectedVote] = useState(null);
 
+  console.log("VotingView gameData:", gameData);
+  console.log("Players:", gameData?.players);
+  console.log("Dead players:", gameData?.deadPlayers);
+
   const castVote = async (targetUid) => {
     if (gameData.deadPlayers.includes(user.uid)) return;
     await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'games', gameCode), {
@@ -47,6 +51,18 @@ export const VotingView = ({ gameData, gameCode, user }) => {
     });
   };
 
+  // Oyuncuları sırala: canlılar önce, ölüler sonra
+  const players = gameData?.players || [];
+  const deadPlayers = gameData?.deadPlayers || [];
+  
+  const sortedPlayers = [...players].sort((a, b) => {
+    const aDead = deadPlayers.includes(a.uid);
+    const bDead = deadPlayers.includes(b.uid);
+    if (aDead && !bDead) return 1;
+    if (!aDead && bDead) return -1;
+    return 0;
+  });
+
   return (
     <div className="min-h-screen p-6 pb-24 flex flex-col items-center">
       <div className="text-center mb-8">
@@ -55,9 +71,9 @@ export const VotingView = ({ gameData, gameCode, user }) => {
         <p className="text-red-400/60 font-inter text-sm mt-1">Hain kim? Kararını ver.</p>
       </div>
 
-      <div className="w-full max-w-md space-y-3">
-        {gameData?.players?.map(p => {
-          const isDead = gameData.deadPlayers?.includes(p.uid);
+      <div className="w-full max-w-md space-y-3 max-h-96 overflow-y-auto p-2">
+        {sortedPlayers.length > 0 ? sortedPlayers.map(p => {
+          const isDead = deadPlayers.includes(p.uid);
           const isSelected = selectedVote === p.uid;
           
           return (
@@ -69,12 +85,14 @@ export const VotingView = ({ gameData, gameCode, user }) => {
             >
               <div className="flex items-center gap-4 relative z-10">
                 {isDead ? <Ghost className="text-slate-500" /> : <User className={isSelected ? "text-red-400" : "text-slate-400"} />}
-                <span className={`font-cinzel font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                <span className={`font-cinzel font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{p.name || "İsimsiz"}</span>
               </div>
               {isSelected && <div className="relative z-10"><Fingerprint className="text-red-500" /></div>}
             </button>
           )
-        })}
+        }) : (
+          <div className="text-center text-white/50 p-8">Oyuncu bulunamadı.</div>
+        )}
       </div>
 
       {gameData?.hostId === user?.uid && (

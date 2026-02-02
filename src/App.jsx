@@ -23,6 +23,7 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const audioRef = useRef(null);
   const previousViewRef = useRef('home');
+  const [hasJoinedGame, setHasJoinedGame] = useState(false); // Yeni state eklendi
 
   // Ses efektleri
   const playSound = (soundName) => {
@@ -64,9 +65,6 @@ export default function App() {
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     
-    // Sayfa yüklendiğinde tam ekran olması için bir buton ekleyeceğiz
-    // Kullanıcı etkileşimi gerektiği için otomatik tam ekran yapmıyoruz
-    
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
@@ -96,11 +94,16 @@ export default function App() {
     });
   }, []);
 
+  // Oyun verilerini dinle - SADECE oyuna katıldıktan sonra
   useEffect(() => {
-    if (!gameCode || !user) return;
+    if (!gameCode || !user || !hasJoinedGame) return;
+    
+    console.log("Oyun verisi dinleniyor:", gameCode);
+    
     const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'games', gameCode), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
+        console.log("Oyun verisi güncellendi:", data.status);
         setGameData(data);
         
         // Oyun durumuna göre görünüm geçişi
@@ -127,11 +130,19 @@ export default function App() {
       } else {
         setError('Oda kapatıldı.'); 
         setView('home');
+        setHasJoinedGame(false);
         playSound('error');
       }
+    }, (error) => {
+      console.error("Oyun dinleme hatası:", error);
+      setError('Oyun verisi alınırken hata oluştu.');
     });
-    return () => unsub();
-  }, [gameCode, user]);
+    
+    return () => {
+      console.log("Oyun dinleme durduruldu");
+      unsub();
+    };
+  }, [gameCode, user, hasJoinedGame]);
 
   useEffect(() => {
     if ((gameData?.status === 'discussion' || gameData?.status === 'voting') && gameData?.timerEnd) {
@@ -147,7 +158,7 @@ export default function App() {
           setTimeLeft(diff > 0 ? diff : 0);
           
           // Son 10 saniyede ses efekti
-          if (diff > 0 && diff <= 10) {
+          if (diff > 0 && diff <= 10 && diff !== timeLeft) {
             playSound('timer');
           }
         } else if (typeof timerEnd === 'number') {
@@ -156,7 +167,7 @@ export default function App() {
           setTimeLeft(diff > 0 ? diff : 0);
           
           // Son 10 saniyede ses efekti
-          if (diff > 0 && diff <= 10) {
+          if (diff > 0 && diff <= 10 && diff !== timeLeft) {
             playSound('timer');
           }
         }
@@ -167,84 +178,94 @@ export default function App() {
     }
   }, [gameData]);
 
-  const JoinView = () => (
-    <div className="min-h-screen flex items-center justify-center p-6 animate-fadeIn">
-      <div className="glass-panel p-8 rounded-2xl w-full max-w-md space-y-6 relative">
-        <h2 className="text-2xl font-cinzel text-center text-blue-400">GİRİŞ KODU</h2>
-        <input 
-          maxLength={4} 
-          value={gameCode} 
-          onChange={(e) => {
-            // Sadece harf ve rakam kabul et
-            const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-            setGameCode(value);
-          }} 
-          placeholder="XXXX" 
-          className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 text-center text-3xl tracking-[0.5em] font-mono uppercase text-white outline-none focus:border-blue-500" 
-        />
-        {error && (
-          <div className="text-red-400 text-center text-sm animate-pulse">
-            {error}
+  const JoinView = () => {
+    const [localGameCode, setLocalGameCode] = useState(''); // Yerel state kullan
+    
+    const handleJoinGame = async () => {
+      if(!playerName) {
+        setError("İsim giriniz");
+        playSound('error');
+        return;
+      }
+      
+      if(localGameCode.length !== 4) {
+        setError("Kod 4 karakter olmalı");
+        playSound('error');
+        return;
+      }
+      
+      setLoading(true);
+      setError('');
+      playSound('click');
+      
+      const q = query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'games'));
+      const snap = await getDocs(q);
+      
+      if(snap.docs.some(d => d.id === localGameCode.toUpperCase())) {
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'games', localGameCode.toUpperCase()), {
+            players: arrayUnion({ uid: user.uid, name: playerName, isHost: false })
+          });
+          localStorage.setItem('vampire_player_name', playerName);
+          setGameCode(localGameCode.toUpperCase()); // Burada global state'i güncelle
+          setHasJoinedGame(true); // Oyuna katıldığını belirt
+          setView('lobby');
+          playSound('success');
+        } catch (err) {
+          console.error("Odaya katılma hatası:", err);
+          setError("Odaya katılırken hata: " + err.message);
+          playSound('error');
+        }
+      } else { 
+        setError("Oda bulunamadı"); 
+        playSound('error');
+      }
+      setLoading(false);
+    };
+    
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 animate-fadeIn">
+        <div className="glass-panel p-8 rounded-2xl w-full max-w-md space-y-6 relative">
+          <h2 className="text-2xl font-cinzel text-center text-blue-400">GİRİŞ KODU</h2>
+          <input 
+            maxLength={4} 
+            value={localGameCode} 
+            onChange={(e) => {
+              // Sadece harf ve rakam kabul et
+              const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+              setLocalGameCode(value);
+            }} 
+            placeholder="XXXX" 
+            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 text-center text-3xl tracking-[0.5em] font-mono uppercase text-white outline-none focus:border-blue-500" 
+          />
+          {error && (
+            <div className="text-red-400 text-center text-sm animate-pulse">
+              {error}
+            </div>
+          )}
+          <div className="flex gap-4">
+            <button 
+              onClick={() => {
+                playSound('click');
+                setView('home');
+                setError('');
+              }} 
+              className="flex-1 py-4 bg-slate-800 text-slate-300 rounded-xl font-bold font-cinzel hover:bg-slate-700 transition-colors"
+            >
+              GERİ
+            </button>
+            <button 
+              onClick={handleJoinGame}
+              className="flex-1 py-4 bg-blue-800 text-white rounded-xl font-bold font-cinzel hover:bg-blue-700 transition-colors disabled:opacity-50"
+              disabled={loading || localGameCode.length !== 4}
+            >
+              {loading ? "GİRİLİYOR..." : "GİR"}
+            </button>
           </div>
-        )}
-        <div className="flex gap-4">
-          <button 
-            onClick={() => {
-              playSound('click');
-              setView('home');
-            }} 
-            className="flex-1 py-4 bg-slate-800 text-slate-300 rounded-xl font-bold font-cinzel hover:bg-slate-700 transition-colors"
-          >
-            GERİ
-          </button>
-          <button 
-            onClick={async () => {
-              if(!playerName) {
-                setError("İsim giriniz");
-                playSound('error');
-                return;
-              }
-              
-              if(gameCode.length !== 4) {
-                setError("Kod 4 karakter olmalı");
-                playSound('error');
-                return;
-              }
-              
-              setLoading(true);
-              setError('');
-              playSound('click');
-              
-              const q = query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'games'));
-              const snap = await getDocs(q);
-              
-              if(snap.docs.some(d => d.id === gameCode)) {
-                try {
-                  await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'games', gameCode), {
-                    players: arrayUnion({ uid: user.uid, name: playerName, isHost: false })
-                  });
-                  localStorage.setItem('vampire_player_name', playerName);
-                  setView('lobby');
-                  playSound('success');
-                } catch (err) {
-                  setError("Odaya katılırken hata: " + err.message);
-                  playSound('error');
-                }
-              } else { 
-                setError("Oda bulunamadı"); 
-                playSound('error');
-              }
-              setLoading(false);
-            }} 
-            className="flex-1 py-4 bg-blue-800 text-white rounded-xl font-bold font-cinzel hover:bg-blue-700 transition-colors disabled:opacity-50"
-            disabled={loading || gameCode.length !== 4}
-          >
-            {loading ? "GİRİLİYOR..." : "GİR"}
-          </button>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Tam Ekran Butonu
   const FullscreenButton = () => (
@@ -283,7 +304,8 @@ export default function App() {
     vampireCount, 
     setVampireCount, 
     timeLeft,
-    playSound // Ses fonksiyonunu tüm view'lere aktar
+    playSound,
+    setHasJoinedGame // Yeni prop eklendi
   };
 
   return (
