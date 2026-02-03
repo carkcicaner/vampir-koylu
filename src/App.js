@@ -1,33 +1,315 @@
-// App.js'de createGame fonksiyonuna rol atama ekleyelim
-const assignRoles = (players, vampireCount) => {
-  const shuffled = [...players].sort(() => Math.random() - 0.5);
-  const roles = {};
-  
-  // Vampirleri seç
-  for (let i = 0; i < Math.min(vampireCount, shuffled.length); i++) {
-    roles[shuffled[i].uid] = 'vampire';
-  }
-  
-  // Kalanları köylü yap
-  for (let i = vampireCount; i < shuffled.length; i++) {
-    roles[shuffled[i].uid] = 'villager';
-  }
-  
-  return roles;
-};
+import React, { useState, useEffect, useRef } from 'react';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { doc, onSnapshot, getDocs, query, collection, updateDoc, arrayUnion } from 'firebase/firestore';
 
-// createGame fonksiyonunu güncelle
-const createGame = async () => {
-  // ... mevcut kodlar
-  
-  const players = [{ uid: user.uid, name: playerName, isHost: true }];
-  const roles = assignRoles(players, vampireCount);
-  
-  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'games', newCode), {
-    // ... diğer alanlar
-    roles: roles,
-    // ... devamı
-  });
-  
-  // ... devamı
-};
+import { auth, db, APP_ID } from './config/firebase';
+import { HomeView } from './views/HomeView';
+import { LobbyView } from './views/LobbyView';
+import { StoryView } from './views/StoryView';
+import { GameView } from './views/GameView';
+import { VotingView } from './views/VotingView';
+import { ResultView } from './views/ResultView';
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [view, setView] = useState('home');
+  const [gameCode, setGameCode] = useState('');
+  const [gameData, setGameData] = useState(null);
+  const [playerName, setPlayerName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [vampireCount, setVampireCount] = useState(2);
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const audioRef = useRef(null);
+  const previousViewRef = useRef('home');
+  const [hasJoinedGame, setHasJoinedGame] = useState(false);
+
+  // Ses efektleri
+  const playSound = (soundName) => {
+    const sounds = {
+      click: 'https://assets.mixkit.co/sfx/preview/mixkit-select-click-1109.mp3',
+      success: 'https://assets.mixkit.co/sfx/preview/mixkit-unlock-game-notification-253.mp3',
+      error: 'https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-notification-946.mp3',
+      transition: 'https://assets.mixkit.co/sfx/preview/mixkit-game-show-wrong-answer-buzz-950.mp3',
+      timer: 'https://assets.mixkit.co/sfx/preview/mixkit-retro-game-emergency-alarm-1000.mp3'
+    };
+    
+    if (sounds[soundName]) {
+      const audio = new Audio(sounds[soundName]);
+      audio.volume = 0.3;
+      audio.play().catch(e => console.log("Ses oynatma hatası:", e));
+    }
+  };
+
+  // Tam ekran yönetimi
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen()
+        .then(() => setIsFullscreen(true))
+        .catch(err => console.log("Tam ekran hatası:", err));
+    } else {
+      document.exitFullscreen()
+        .then(() => setIsFullscreen(false))
+        .catch(err => console.log("Tam ekran çıkış hatası:", err));
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (view !== previousViewRef.current) {
+      playSound('transition');
+      previousViewRef.current = view;
+    }
+  }, [view]);
+
+  const Background = () => (
+    <div className="fixed inset-0 z-[-1] bg-[#050505] overflow-hidden pointer-events-none">
+      <div className="absolute top-[-20%] left-[-20%] w-[140%] h-[140%] bg-[radial-gradient(circle_at_center,_rgba(139,0,0,0.15),_transparent_70%)] animate-fog mix-blend-screen"></div>
+      <div className="absolute bottom-[-20%] right-[-20%] w-[120%] h-[120%] bg-[radial-gradient(circle_at_center,_rgba(25,25,112,0.15),_transparent_70%)] animate-fog mix-blend-screen" style={{ animationDelay: '-10s' }}></div>
+      <div className="absolute inset-0 opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"></div>
+    </div>
+  );
+
+  useEffect(() => {
+    signInAnonymously(auth).catch(console.error);
+    return onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      if(localStorage.getItem('vampire_player_name')) setPlayerName(localStorage.getItem('vampire_player_name'));
+    });
+  }, []);
+
+  // Oyun verilerini dinle - SADECE oyuna katıldıktan sonra
+  useEffect(() => {
+    if (!gameCode || !user || !hasJoinedGame) return;
+    
+    console.log("Oyun verisi dinleniyor:", gameCode);
+    
+    const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'games', gameCode), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        console.log("Oyun verisi güncellendi:", data.status);
+        setGameData(data);
+        
+        if (data.status === 'lobby' && view !== 'lobby') {
+          setView('lobby');
+          playSound('success');
+        }
+        if (data.status === 'story' && view !== 'story') {
+          setView('story');
+          playSound('transition');
+        }
+        if (data.status === 'discussion' && view !== 'game') {
+          setView('game');
+          playSound('transition');
+        }
+        if (data.status === 'voting' && view !== 'voting') {
+          setView('voting');
+          playSound('transition');
+        }
+        if (data.status === 'result' && view !== 'result') {
+          setView('result');
+          playSound('transition');
+        }
+      } else {
+        setError('Oda kapatıldı.'); 
+        setView('home');
+        setHasJoinedGame(false);
+        playSound('error');
+      }
+    }, (error) => {
+      console.error("Oyun dinleme hatası:", error);
+      setError('Oyun verisi alınırken hata oluştu.');
+    });
+    
+    return () => {
+      console.log("Oyun dinleme durduruldu");
+      unsub();
+    };
+  }, [gameCode, user, hasJoinedGame]);
+
+  useEffect(() => {
+    if ((gameData?.status === 'discussion' || gameData?.status === 'voting') && gameData?.timerEnd) {
+      const interval = setInterval(() => {
+        const now = Date.now();
+        const timerEnd = gameData.timerEnd;
+        
+        if (timerEnd && typeof timerEnd === 'object' && timerEnd.seconds) {
+          const endTime = timerEnd.seconds * 1000 + Math.floor(timerEnd.nanoseconds / 1000000);
+          const diff = Math.ceil((endTime - now) / 1000);
+          setTimeLeft(diff > 0 ? diff : 0);
+          
+          if (diff > 0 && diff <= 10 && diff !== timeLeft) {
+            playSound('timer');
+          }
+        } else if (typeof timerEnd === 'number') {
+          const diff = Math.ceil((timerEnd - now) / 1000);
+          setTimeLeft(diff > 0 ? diff : 0);
+          
+          if (diff > 0 && diff <= 10 && diff !== timeLeft) {
+            playSound('timer');
+          }
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setTimeLeft(null);
+    }
+  }, [gameData]);
+
+  const JoinView = () => {
+    const [localGameCode, setLocalGameCode] = useState('');
+    
+    const handleJoinGame = async () => {
+      if(!playerName) {
+        setError("İsim giriniz");
+        playSound('error');
+        return;
+      }
+      
+      if(localGameCode.length !== 4) {
+        setError("Kod 4 karakter olmalı");
+        playSound('error');
+        return;
+      }
+      
+      setLoading(true);
+      setError('');
+      playSound('click');
+      
+      const q = query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'games'));
+      const snap = await getDocs(q);
+      
+      if(snap.docs.some(d => d.id === localGameCode.toUpperCase())) {
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'games', localGameCode.toUpperCase()), {
+            players: arrayUnion({ uid: user.uid, name: playerName, isHost: false })
+          });
+          localStorage.setItem('vampire_player_name', playerName);
+          setGameCode(localGameCode.toUpperCase());
+          setHasJoinedGame(true);
+          setView('lobby');
+          playSound('success');
+        } catch (err) {
+          console.error("Odaya katılma hatası:", err);
+          setError("Odaya katılırken hata: " + err.message);
+          playSound('error');
+        }
+      } else { 
+        setError("Oda bulunamadı"); 
+        playSound('error');
+      }
+      setLoading(false);
+    };
+    
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 animate-fadeIn">
+        <div className="glass-panel p-8 rounded-2xl w-full max-w-md space-y-6 relative">
+          <h2 className="text-2xl font-cinzel text-center text-blue-400">GİRİŞ KODU</h2>
+          <input 
+            maxLength={4} 
+            value={localGameCode} 
+            onChange={(e) => {
+              const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+              setLocalGameCode(value);
+            }} 
+            placeholder="XXXX" 
+            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 text-center text-3xl tracking-[0.5em] font-mono uppercase text-white outline-none focus:border-blue-500" 
+          />
+          {error && (
+            <div className="text-red-400 text-center text-sm animate-pulse">
+              {error}
+            </div>
+          )}
+          <div className="flex gap-4">
+            <button 
+              onClick={() => {
+                playSound('click');
+                setView('home');
+                setError('');
+              }} 
+              className="flex-1 py-4 bg-slate-800 text-slate-300 rounded-xl font-bold font-cinzel hover:bg-slate-700 transition-colors"
+            >
+              GERİ
+            </button>
+            <button 
+              onClick={handleJoinGame}
+              className="flex-1 py-4 bg-blue-800 text-white rounded-xl font-bold font-cinzel hover:bg-blue-700 transition-colors disabled:opacity-50"
+              disabled={loading || localGameCode.length !== 4}
+            >
+              {loading ? "GİRİLİYOR..." : "GİR"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Tam Ekran Butonu
+  const FullscreenButton = () => (
+    <button
+      onClick={() => {
+        playSound('click');
+        toggleFullscreen();
+      }}
+      className="fixed top-4 right-4 z-50 p-2 bg-black/50 hover:bg-black/70 rounded-lg backdrop-blur-sm border border-white/10 transition-all hover:scale-110"
+      title={isFullscreen ? "Tam Ekrandan Çık" : "Tam Ekran Yap"}
+    >
+      {isFullscreen ? (
+        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      ) : (
+        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5h-4m4 0v-4m0 4l-5-5" />
+        </svg>
+      )}
+    </button>
+  );
+
+  const props = { 
+    user, 
+    gameCode, 
+    setGameCode, 
+    gameData, 
+    playerName, 
+    setPlayerName, 
+    setLoading, 
+    loading, 
+    setError, 
+    setView, 
+    vampireCount, 
+    setVampireCount, 
+    timeLeft,
+    playSound,
+    setHasJoinedGame
+  };
+
+  return (
+    <>
+      <Background />
+      <FullscreenButton />
+      
+      {view === 'home' && <HomeView {...props} />}
+      {view === 'join' && <JoinView />}
+      {view === 'lobby' && <LobbyView {...props} />}
+      {view === 'story' && <StoryView {...props} />}
+      {view === 'game' && <GameView {...props} />}
+      {view === 'voting' && <VotingView {...props} />}
+      {view === 'result' && <ResultView {...props} />}
+      
+      <audio ref={audioRef} style={{ display: 'none' }} />
+    </>
+  );
+}

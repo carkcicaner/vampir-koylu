@@ -10,6 +10,7 @@ export const StoryView = ({ gameData, gameCode, user, setView, playSound }) => {
   const currentPlayer = gameData?.players?.find(p => p.uid === user.uid);
   const playerRole = gameData?.roles?.[user.uid];
   const isVampire = playerRole === 'vampire';
+  const isDead = gameData?.deadPlayers?.includes(user.uid);
   
   // Diğer vampirleri bul
   const otherVampires = gameData?.players?.filter(p => 
@@ -36,8 +37,8 @@ export const StoryView = ({ gameData, gameCode, user, setView, playSound }) => {
   const handleReady = async () => {
     playSound('click');
     if (gameData?.hostId === user.uid) {
-      // Süre başlat
-      const discussionTime = 300; // 5 dakika
+      // Süre başlat (5 dakika = 300 saniye)
+      const discussionTime = 300;
       await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'games', gameCode), {
         status: 'discussion',
         timerEnd: Date.now() + (discussionTime * 1000),

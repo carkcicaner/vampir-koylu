@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { MessageSquare, Users, Skull, Shield, Clock } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db, APP_ID } from '../config/firebase';
 
 export const GameView = ({ gameData, gameCode, user, timeLeft, playSound }) => {
   const [message, setMessage] = useState('');
@@ -19,9 +17,6 @@ export const GameView = ({ gameData, gameCode, user, timeLeft, playSound }) => {
   const sendMessage = async () => {
     if (!message.trim() || isDead) return;
     playSound('click');
-    
-    // Burada sohbet mesajı gönderme mantığı eklenebilir
-    // Şimdilik placeholder olarak bırakıyorum
     setMessage('');
   };
 
@@ -36,7 +31,9 @@ export const GameView = ({ gameData, gameCode, user, timeLeft, playSound }) => {
         {timeLeft !== null && (
           <div className="mt-4 inline-flex items-center gap-2 bg-blue-900/30 px-4 py-2 rounded-full border border-blue-800/50">
             <Clock className="text-blue-400" size={16} />
-            <span className="text-white font-mono text-sm">{timeLeft} SANİYE</span>
+            <span className="text-white font-mono text-sm">
+              {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+            </span>
           </div>
         )}
       </div>
@@ -108,12 +105,11 @@ export const GameView = ({ gameData, gameCode, user, timeLeft, playSound }) => {
             </div>
           </div>
           
-          {/* Sohbet Kutusu (opsiyonel) */}
+          {/* Sohbet Kutusu */}
           <div className="mt-6 glass-panel p-6 rounded-2xl">
             <h3 className="font-cinzel text-white mb-4">TARTIŞMA</h3>
             <div className="space-y-4">
               <div className="h-40 overflow-y-auto p-3 bg-black/30 rounded-lg">
-                {/* Sohbet mesajları buraya gelecek */}
                 <p className="text-white/50 text-center py-8">
                   Tartışma başlamak için mesaj yazın...
                 </p>
@@ -124,7 +120,7 @@ export const GameView = ({ gameData, gameCode, user, timeLeft, playSound }) => {
                   type="text"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Mesajınız..."
+                  placeholder={isDead ? "Ölüler konuşamaz..." : "Mesajınız..."}
                   disabled={isDead}
                   className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white outline-none disabled:opacity-50"
                   onKeyPress={(e) => e.key === 'Enter' && sendMessage()}

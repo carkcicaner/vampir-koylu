@@ -1,34 +1,90 @@
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Inter:wght@300;400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Eğer Tailwind kullanmıyorsanız, bu stilleri ekleyin */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 body {
+  font-family: 'Inter', sans-serif;
   background-color: #050505;
   color: white;
-  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
 }
 
-.glass-panel {
-  background: rgba(10, 10, 15, 0.6);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+/* Tailwind CSS classes for components */
+@layer components {
+  .glass-panel {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+  
+  .text-glow-red {
+    text-shadow: 0 0 10px rgba(220, 38, 38, 0.7),
+                 0 0 20px rgba(220, 38, 38, 0.5),
+                 0 0 30px rgba(220, 38, 38, 0.3);
+  }
+  
+  .text-glow-blue {
+    text-shadow: 0 0 10px rgba(59, 130, 246, 0.7),
+                 0 0 20px rgba(59, 130, 246, 0.5),
+                 0 0 30px rgba(59, 130, 246, 0.3);
+  }
 }
 
-.text-glow-red { text-shadow: 0 0 20px rgba(220, 38, 38, 0.6); }
-.text-glow-blue { text-shadow: 0 0 20px rgba(59, 130, 246, 0.6); }
-.text-glow-white { text-shadow: 0 0 15px rgba(255, 255, 255, 0.4); }
-
-.preserve-3d { transform-style: preserve-3d; }
-.backface-hidden { backface-visibility: hidden; }
-.rotate-y-180 { transform: rotateY(180deg); }
-.perspective-1000 { perspective: 1000px; }
-
-.typing-cursor::after {
-  content: '|';
-  animation: blink 1s step-end infinite;
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-@keyframes blink { 50% { opacity: 0; } }
+
+@keyframes fog {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.3; }
+  25% { transform: translate(5%, 5%) scale(1.05); opacity: 0.4; }
+  50% { transform: translate(0, 10%) scale(1.1); opacity: 0.3; }
+  75% { transform: translate(-5%, 5%) scale(1.05); opacity: 0.4; }
+  100% { transform: translate(0, 0) scale(1); opacity: 0.3; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.animate-fog {
+  animation: fog 20s infinite alternate ease-in-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(220, 38, 38, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(220, 38, 38, 0.8);
+}

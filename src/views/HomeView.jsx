@@ -14,60 +14,58 @@ export const HomeView = ({
   loading, 
   vampireCount, 
   setVampireCount,
-  playSound 
+  playSound,
+  setHasJoinedGame
 }) => {
 
- // HomeView.jsx - sadece createGame fonksiyonunu güncelle
-const createGame = async () => {
-  if (!playerName.trim()) {
-    setError('İsim girilmeli.');
-    playSound('error');
-    return;
-  }
-  
-  playSound('click');
-  setLoading(true);
-  localStorage.setItem('vampire_player_name', playerName);
-  
-  // Benzersiz bir oyun kodu oluştur
-  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let newCode = '';
-  for (let i = 0; i < 4; i++) {
-    newCode += characters.charAt(Math.floor(Math.random() * characters.length));
-  }
-  
-  try {
-    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'games', newCode), {
-      hostId: user.uid,
-      code: newCode,
-      status: 'lobby',
-      createdAt: Date.now(),
-      settings: { vampireCount },
-      story: { text: '', modifier: '' },
-      players: [{ uid: user.uid, name: playerName, isHost: true }],
-      roles: {}, 
-      deadPlayers: [], 
-      votes: {}, 
-      lastResult: null,
-      timerEnd: null,
-      round: 1
-    });
+  const createGame = async () => {
+    if (!playerName.trim()) {
+      setError('İsim girilmeli.');
+      playSound('error');
+      return;
+    }
     
-    playSound('success');
-    setGameCode(newCode);
-    setHasJoinedGame(true); // Bu satırı ekle!
-    setView('lobby');
-  } catch (error) {
-    console.error("Oyun oluşturma hatası:", error);
-    setError('Oyun oluşturulurken hata: ' + error.message);
-    playSound('error');
-  } finally {
-    setLoading(false);
-  }
-
+    playSound('click');
+    setLoading(true);
+    localStorage.setItem('vampire_player_name', playerName);
+    
+    // Benzersiz bir oyun kodu oluştur
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let newCode = '';
+    for (let i = 0; i < 4; i++) {
+      newCode += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    
+    try {
+      await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'games', newCode), {
+        hostId: user.uid,
+        code: newCode,
+        status: 'lobby',
+        createdAt: Date.now(),
+        settings: { vampireCount },
+        story: { text: '', modifier: '' },
+        players: [{ uid: user.uid, name: playerName, isHost: true }],
+        roles: {}, 
+        deadPlayers: [], 
+        votes: {}, 
+        lastResult: null,
+        timerEnd: null,
+        round: 1
+      });
+      
+      playSound('success');
+      setGameCode(newCode);
+      setHasJoinedGame(true);
+      setView('lobby');
+    } catch (error) {
+      console.error("Oyun oluşturma hatası:", error);
+      setError('Oyun oluşturulurken hata: ' + error.message);
+      playSound('error');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Tam ekran fonksiyonu
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen()
@@ -89,7 +87,6 @@ const createGame = async () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 animate-fadeIn">
-      {/* Tam Ekran Butonu */}
       <button
         onClick={() => {
           playSound('click');
